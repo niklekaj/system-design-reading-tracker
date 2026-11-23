@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Design Reading Tracker</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#111b2c;--panel2:#162338;--text:#e8eef8;--muted:#9aabc3;--accent:#7dd3fc;--line:#24354d;--green:#4ade80}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+header{max-width:1100px;margin:auto;padding:34px 22px 18px}h1{margin:0;font-size:clamp(25px,4vw,38px);letter-spacing:-.03em}header p{color:var(--muted);margin:8px 0 0}
+main{max-width:1100px;margin:auto;padding:0 22px 50px}.tabs{display:flex;gap:10px;flex-wrap:wrap;margin:15px 0 20px}.tab{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:10px 15px;border-radius:10px;cursor:pointer;font-weight:650}.tab.active{border-color:var(--accent);color:var(--accent);background:#12283b}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--panel);border:1px solid var(--line);padding:12px;border-radius:14px;margin-bottom:16px}.progress{min-width:180px;flex:1;color:var(--muted);font-size:14px}.bar{height:7px;background:#24354d;border-radius:99px;overflow:hidden;margin-top:7px}.bar>span{display:block;height:100%;background:var(--green);width:0;transition:width .2s}.search{flex:1;min-width:180px;padding:10px 12px;border-radius:9px;background:#0b1524;border:1px solid var(--line);color:var(--text)}button.small{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:9px 11px;border-radius:9px;cursor:pointer}.small:hover,.tab:hover{border-color:#6b8aaa}.status{color:var(--muted);font-size:13px;padding:3px 0 12px}
+section.category{background:var(--panel);border:1px solid var(--line);border-radius:13px;margin:12px 0;overflow:hidden}section.category h2{font-size:17px;margin:0;padding:13px 15px;background:var(--panel2);border-bottom:1px solid var(--line)}.item{display:flex;align-items:flex-start;gap:11px;padding:11px 15px;border-bottom:1px solid #1c2b40}.item:last-child{border-bottom:0}.item input{margin-top:4px;accent-color:var(--green);width:17px;height:17px;flex-shrink:0}.item label{flex:1;cursor:pointer}.item.done label{color:var(--muted);text-decoration:line-through}.item a{color:var(--accent);text-decoration:none}.item a:hover{text-decoration:underline}.empty{padding:20px;color:var(--muted)}.footer{color:var(--muted);font-size:13px;margin-top:24px}
+@media(max-width:600px){header{padding-top:25px}.toolbar{align-items:stretch}.progress{min-width:100%}}
+</style>
+</head>
+<body>
+<header><h1>System Design Reading Tracker</h1><p>Keep your place across two curated reading lists. Progress is saved in this browser.</p></header>
+<main>
+<div class="tabs" role="tablist"><button class="tab active" data-tab="scale">Awesome Scalability</button><button class="tab" data-tab="bbg">System Design 101</button></div>
+<div class="toolbar"><div class="progress"><div id="progressText">Loading…</div><div class="bar"><span id="progressBar"></span></div></div><input class="search" id="search" placeholder="Filter items…" aria-label="Filter items"><button class="small" id="resetTab">Reset this list</button><button class="small" id="reload">Refresh list</button></div>
+<div class="status" id="status"></div><div id="content"></div>
+<p class="footer">Checklist data is stored in localStorage on this browser/device. It does not sync between devices. Lists are loaded from the repositories’ README files when you open/refresh this page.</p>
+</main>
+<script>
+const repos={
+ scale:{name:'Awesome Scalability',url:'https://raw.githubusercontent.com/binhnguyennus/awesome-scalability/master/README.md',fallback:'https://raw.githubusercontent.com/binhnguyannus/awesome-scalability/main/README.md',source:'https://github.com/binhnguyannus/awesome-scalability'},
+ bbg:{name:'System Design 101',url:'https://raw.githubusercontent.com/ByteByteGoHq/system-design-101/main/README.md',source:'https://github.com/ByteByteGoHq/system-design-101'}
+};
+let active='scale',lists={},checked=JSON.parse(localStorage.getItem('reading-tracker-checked-v1')||'{}');
+const content=document.getElementById('content'),status=document.getElementById('status'),search=document.getElementById('search');
+function persist(){localStorage.setItem('reading-tracker-checked-v1',JSON.stringify(checked));}
+function parseReadme(md){let cats=[],category='Reading list',items=[];const flush=()=>{if(items.length){cats.push({name:category,items});items=[];}};
+ for(const line of md.split(/\r?\n/)){const h=line.match(/^#{1,4}\s+(.+)$/);if(h){flush();category=h[1].replace(/\s+#+\s*$/,'').trim();continue;}
+ // Only capture list entries (not arbitrary prose links); support nested bullets and numbered lists.
+ if(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(line)){let matches=[...line.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g)];if(matches.length){matches.forEach(m=>items.push({title:m[1].replace(/\\([*_])/g,'$1').trim(),url:m[2]}));}else{let plain=line.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/,'').trim();if(plain && plain.length<180)items.push({title:plain,url:''});}}
+ }
+ flush();return cats;
+}
+async function load(key){status.textContent='Fetching the current README list…';try{let res=await fetch(repos[key].url,{cache:'no-cache'});if(!res.ok)throw Error(`Fetch failed (${res.status})`);let md=await res.text();lists[key]=parseReadme(md);status.textContent=`Loaded from GitHub README · ${lists[key].reduce((n,c)=>n+c.items.length,0)} entries`;}catch(e){status.textContent='Could not load the list. Check your connection, then refresh. '+e.message;lists[key]=[];}}
+function itemId(key,item){return key+'::'+item.url+'::'+item.title;}
+function render(){if(!lists[active]){content.innerHTML='<div class="empty">List not loaded yet.</div>';return;}let filter=search.value.toLowerCase(),total=0,done=0;content.innerHTML='';
+ for(const cat of lists[active]){let visible=cat.items.filter(it=>it.title.toLowerCase().includes(filter));if(!visible.length)continue;let section=document.createElement('section');section.className='category';let h=document.createElement('h2');h.textContent=cat.name;section.appendChild(h);
+ for(const it of visible){const id=itemId(active,it),isDone=!!checked[id];total++;if(isDone)done++;let row=document.createElement('div');row.className='item'+(isDone?' done':'');let cb=document.createElement('input');cb.type='checkbox';cb.checked=isDone;cb.setAttribute('aria-label','Mark read: '+it.title);let label=document.createElement('label');label.textContent=it.title;if(it.url){label.innerHTML='';let a=document.createElement('a');a.href=it.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=it.title;label.appendChild(a);}cb.addEventListener('change',()=>{checked[id]=cb.checked;persist();render();});row.append(cb,label);section.appendChild(row);}content.appendChild(section);}
+ document.getElementById('progressText').textContent=`${done} of ${total} visible items completed (${lists[active].reduce((n,c)=>n+c.items.length,0)} total)`;document.getElementById('progressBar').style.width=(total?done/total*100:0)+'%';if(!content.children.length)content.innerHTML='<div class="empty">No matching items.</div>';
+}
+async function activate(key){active=key;document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===key));search.value='';if(!lists[key])await load(key);render();}
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>activate(b.dataset.tab)));search.addEventListener('input',render);
+document.getElementById('reload').addEventListener('click',async()=>{delete lists[active];await load(active);render();});
+document.getElementById('resetTab').addEventListener('click',()=>{if(!confirm('Clear saved checkmarks for this tab?'))return;Object.keys(checked).filter(k=>k.startsWith(active+'::')).forEach(k=>delete checked[k]);persist();render();});
+activate('scale');
+</script>
+</body>
+</html>
